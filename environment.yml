@@ -1,0 +1,38 @@
+name: chennai_climate
+channels:
+  - conda-forge
+  - pytorch
+dependencies:
+  # --- Python ---
+  - python=3.11
+
+  # --- Core scientific ---
+  - numpy
+  - scipy
+  - pandas
+  - scikit-learn
+
+  # --- Geospatial ---
+  - rasterio
+  - geopandas
+  - shapely
+  - pyproj
+  - fiona
+  - gdal
+
+  # --- OSM ---
+  - osmnx
+
+  # --- Visualization ---
+  - matplotlib
+  - tqdm
+
+  # --- Deep Learning ---
+  - pytorch
+  - torchvision
+
+  # --- Utilities ---
+  - pip
+  - pip:
+      - planetary-computer
+      - pystac-client
