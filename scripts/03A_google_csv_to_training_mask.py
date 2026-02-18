@@ -22,7 +22,7 @@ CSV = args.csv
 CONF_THRESHOLD = args.conf
 
 AOI = f"data/raw/boundaries/{AOI_NAME}.shp"
-STACK = f"data/processed/stack_{YEAR}_{AOI_NAME}.tif"
+STACK = f"data/processed/{AOI_NAME}/stack_{YEAR}.tif"
 OUT = f"data/raw/training/labels_google_{YEAR}_{AOI_NAME}.tif"
 
 # ---------------------------------------
