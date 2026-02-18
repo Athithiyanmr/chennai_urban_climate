@@ -1,5 +1,4 @@
-# scripts/03A_make_builtup_labels_from_osm.py
-
+import argparse
 import osmnx as ox
 import geopandas as gpd
 import rasterio
@@ -7,39 +6,49 @@ from rasterio.features import rasterize
 from pathlib import Path
 
 # -------------------------------------------------
-# CONFIG
+# ARGUMENTS
 # -------------------------------------------------
-AOI = "data/raw/boundaries/CMDA.shp"
-REF = "data/processed/chennai_stack_2025.tif"
-OUT = "data/raw/training/builtup_labels.tif"
+parser = argparse.ArgumentParser()
+parser.add_argument("--year", required=True)
+parser.add_argument("--aoi", required=True)
+args = parser.parse_args()
+
+YEAR = args.year
+AOI_NAME = args.aoi
+
+AOI = f"data/raw/boundaries/{AOI_NAME}.shp"
+REF = f"data/processed/stack_{YEAR}_{AOI_NAME}.tif"
+OUT = f"data/raw/training/labels_{YEAR}_{AOI_NAME}.tif"
 
 # -------------------------------------------------
-# 1. Load & fix AOI
+# 1. Load AOI
 # -------------------------------------------------
 print("Loading AOI...")
 aoi = gpd.read_file(AOI)
-aoi["geometry"] = aoi.geometry.buffer(0)  # fix invalid geometries
+aoi["geometry"] = aoi.geometry.buffer(0)
 aoi = aoi.to_crs("EPSG:4326")
 
 # -------------------------------------------------
-# 2. Download OSM buildings (OSMnx v2.x)
+# 2. Download OSM buildings
 # -------------------------------------------------
-print("Downloading OSM buildings via Overpass API...")
+print("Downloading OSM buildings...")
 buildings = ox.features_from_polygon(
     aoi.geometry.iloc[0],
     tags={"building": True}
 )
 
-print("Total OSM features:", len(buildings))
 if buildings.empty:
-    raise RuntimeError("No buildings returned from OSM. Check AOI.")
+    raise RuntimeError("No buildings found in OSM.")
 
 # Keep only polygons
-buildings = buildings[buildings.geometry.type.isin(["Polygon", "MultiPolygon"])]
-print("Polygon buildings:", len(buildings))
+buildings = buildings[
+    buildings.geometry.type.isin(["Polygon", "MultiPolygon"])
+]
+
+print("Total buildings:", len(buildings))
 
 # -------------------------------------------------
-# 3. Load Sentinel reference raster
+# 3. Load reference raster
 # -------------------------------------------------
 with rasterio.open(REF) as ref:
     meta = ref.meta.copy()
@@ -47,19 +56,15 @@ with rasterio.open(REF) as ref:
     transform = ref.transform
     crs = ref.crs
 
-print("Sentinel CRS:", crs)
-print("Raster shape:", shape)
-
 # -------------------------------------------------
-# 4. Reproject + buffer buildings (accuracy boost)
+# 4. Reproject buildings
 # -------------------------------------------------
 buildings = buildings.to_crs(crs)
-buildings["geometry"] = buildings.buffer(1)  # meters
+buildings["geometry"] = buildings.buffer(1)
 
 # -------------------------------------------------
 # 5. Rasterize
 # -------------------------------------------------
-print("Rasterizing buildings...")
 labels = rasterize(
     ((g, 1) for g in buildings.geometry),
     out_shape=shape,
@@ -77,4 +82,4 @@ Path("data/raw/training").mkdir(parents=True, exist_ok=True)
 with rasterio.open(OUT, "w", **meta) as dst:
     dst.write(labels, 1)
 
-print("✅ Built-up labels created:", OUT)
+print("✅ Built-up labels saved:", OUT)
