@@ -13,16 +13,16 @@ args = parser.parse_args()
 
 YEAR = args.year
 
-STACK = f"data/processed/chennai_stack_{YEAR}.tif"
-LABEL = "data/raw/training/builtup_labels.tif"
+STACK = f"data/processed/stack_{YEAR}_auroville.tif"
+LABEL = "data/raw/training/builtup_labels_google_auroville.tif"
 
 OUT_IMG = Path(f"data/dl/{YEAR}/images")
 OUT_MSK = Path(f"data/dl/{YEAR}/masks")
 OUT_IMG.mkdir(parents=True, exist_ok=True)
 OUT_MSK.mkdir(parents=True, exist_ok=True)
 
-PATCH = 64
-STRIDE = 32
+PATCH = 16
+STRIDE = 8
 
 # -------------------------
 # LOAD DATA

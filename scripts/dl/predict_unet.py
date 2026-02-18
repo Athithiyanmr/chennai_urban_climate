@@ -11,18 +11,19 @@ from scripts.dl.unet_model import UNet
 # -------------------------
 YEAR = sys.argv[1] if len(sys.argv) > 1 else "2025"
 
-STACK = f"data/processed/chennai_stack_{YEAR}.tif"
+STACK = f"data/processed/stack_{YEAR}_auroville.tif"
 MODEL = f"models/unet_builtup_{YEAR}.pth"
-
+# MODEL = f"models/unet_builtup_2025.pth"
 OUT_DIR = Path(f"outputs/unet/{YEAR}")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 OUT = OUT_DIR / f"chennai_builtup_unet_{YEAR}.tif"
 
-PATCH = 64
-STRIDE = 32
+PATCH = 16
+STRIDE = 8
 
-# -------------------------
+# -------------------------\
+
 # DEVICE
 # -------------------------
 if torch.backends.mps.is_available():
@@ -77,6 +78,7 @@ for i in tqdm(range(0, H - PATCH, STRIDE), desc="Rows"):
 
 # -------------------------
 # AVERAGE OVERLAPS
+
 # -------------------------
 pred_final = np.divide(
     pred_sum,

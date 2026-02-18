@@ -8,7 +8,7 @@ from collections import defaultdict
 # -------------------------------------------------
 # CONFIG
 # -------------------------------------------------
-AOI = "data/raw/boundaries/CMDA.shp"
+AOI = "data/raw/boundaries/auroville.shp"
 OUT = Path("data/raw/sentinel2")
 
 YEARS = [2023, 2024, 2025]
