@@ -1,71 +1,91 @@
-# scripts/01_prepare_aoi_raw.py
+import argparse
 from pathlib import Path
 import rasterio
 from rasterio.merge import merge
 from rasterio.mask import mask
 import geopandas as gpd
 
-AOI = "data/raw/boundaries/auroville.shp"
-RAW = Path("data/raw/sentinel2")
+# ---------------------------------------
+# ARGUMENTS
+# ---------------------------------------
+parser = argparse.ArgumentParser()
+parser.add_argument("--aoi", required=True, help="AOI name (without path)")
+parser.add_argument("--year", required=True, help="Year to process")
+args = parser.parse_args()
+
+AOI_PATH = f"data/raw/boundaries/{args.aoi}.shp"
+RAW_DIR = Path("data/raw/sentinel2") / args.aoi / args.year
+OUT_DIR = Path("data/raw/sentinel2_clipped") / args.aoi / args.year
+
 BANDS = ["B02", "B03", "B04", "B08", "B11"]
 
-# ---------------------------------
-# Extract shapefile name dynamically
-# ---------------------------------
-aoi_name = Path(AOI).stem   # -> "auroville"
+OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-aoi = gpd.read_file(AOI)
+print(f"\nPreparing AOI: {args.aoi}")
+print(f"Year: {args.year}")
 
-for year_dir in RAW.iterdir():
+# ---------------------------------------
+# Load AOI
+# ---------------------------------------
+aoi = gpd.read_file(AOI_PATH)
 
-    if not year_dir.is_dir():
+# ---------------------------------------
+# Process each band
+# ---------------------------------------
+for band in BANDS:
+
+    band_files = list(RAW_DIR.glob(f"**/*{band}.tif"))
+
+    if not band_files:
+        print(f"❌ No files found for {band}")
         continue
 
-    # Skip already processed folders
-    if year_dir.name.endswith(f"_{aoi_name}") or year_dir.name.startswith("._"):
-        continue
+    print(f"\nProcessing band: {band}")
+    srcs = [rasterio.open(f) for f in band_files]
 
-    # ---------------------------------
-    # Create output folder with AOI name
-    # ---------------------------------
-    out_dir = RAW / f"{year_dir.name}_{aoi_name}"
-    out_dir.mkdir(exist_ok=True)
+    # ---------------------------------------
+    # Merge tiles
+    # ---------------------------------------
+    mosaic, transform = merge(srcs)
 
-    for band in BANDS:
+    meta = srcs[0].meta.copy()
+    meta.update(
+        transform=transform,
+        height=mosaic.shape[1],
+        width=mosaic.shape[2]
+    )
 
-        files = list(year_dir.glob(f"*/**/*_{band}.tif"))
-        srcs = [rasterio.open(f) for f in files if f.exists()]
+    # ---------------------------------------
+    # Reproject AOI to raster CRS
+    # ---------------------------------------
+    aoi_proj = aoi.to_crs(meta["crs"])
+    geoms = list(aoi_proj.geometry)
 
-        if not srcs:
-            continue
+    # ---------------------------------------
+    # Clip to AOI
+    # ---------------------------------------
+    with rasterio.io.MemoryFile() as memfile:
+        with memfile.open(**meta) as tmp:
+            tmp.write(mosaic)
 
-        aoi_proj = aoi.to_crs(srcs[0].crs)
-        geoms = list(aoi_proj.geometry)
+            clipped, clipped_transform = mask(
+                tmp,
+                geoms,
+                crop=True,
+                nodata=0
+            )
 
-        mosaic, tr = merge(srcs)
-        meta = srcs[0].meta.copy()
-        meta.update(
-            transform=tr,
-            height=mosaic.shape[1],
-            width=mosaic.shape[2]
-        )
+    meta.update(
+        transform=clipped_transform,
+        height=clipped.shape[1],
+        width=clipped.shape[2]
+    )
 
-        # Use in-memory instead of /tmp file (cleaner)
-        with rasterio.io.MemoryFile() as memfile:
-            with memfile.open(**meta) as tmp:
-                tmp.write(mosaic)
+    out_path = OUT_DIR / f"{band}.tif"
 
-                out, tr = mask(tmp, geoms, crop=True, nodata=0)
+    with rasterio.open(out_path, "w", **meta) as dst:
+        dst.write(clipped)
 
-        meta.update(
-            transform=tr,
-            height=out.shape[1],
-            width=out.shape[2]
-        )
+    print(f"✔ {band} saved")
 
-        with rasterio.open(out_dir / f"{band}.tif", "w", **meta) as dst:
-            dst.write(out)
-
-        print(f"{year_dir.name} {band} done")
-
-print(f"\n✔ AOI prepared for: {aoi_name}")
+print(f"\n✅ AOI clipping complete for {args.aoi} {args.year}")
