@@ -3,12 +3,6 @@
 This project performs automatic built-up extraction from Sentinel-2
 imagery using spectral indices and UNet segmentation.
 
-## IoU Meaning
-
-IoU = Intersection / Union --- measures overlap between predicted and
-true buildings.
-
-0.6+ IoU = strong segmentation performance.
 
 ## Setup
 
