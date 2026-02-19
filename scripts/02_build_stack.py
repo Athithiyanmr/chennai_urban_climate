@@ -8,8 +8,8 @@ from rasterio.warp import reproject, Resampling
 # ARGUMENTS
 # ---------------------------------------
 parser = argparse.ArgumentParser()
-parser.add_argument("--aoi", required=True, help="AOI name")
-parser.add_argument("--year", required=True, help="Year")
+parser.add_argument("--aoi", required=True)
+parser.add_argument("--year", required=True)
 args = parser.parse_args()
 
 AOI = args.aoi
@@ -26,30 +26,29 @@ print(f"\nBuilding stack for {AOI} {YEAR}")
 arrays = []
 
 # ---------------------------------------
-# Load reference band (B02)
+# Reference band
 # ---------------------------------------
 ref_path = RAW_DIR / "B02.tif"
-
 if not ref_path.exists():
-    raise FileNotFoundError(f"Missing B02 in {RAW_DIR}")
+    raise FileNotFoundError(ref_path)
 
 with rasterio.open(ref_path) as ref:
     ref_arr = ref.read(1).astype("float32")
     ref_meta = ref.meta.copy()
+    nodata = ref.nodata
 
 arrays.append(ref_arr)
 
 # ---------------------------------------
-# Load other bands (resample if needed)
+# Load other bands
 # ---------------------------------------
 for band in BANDS[1:]:
 
-    band_path = RAW_DIR / f"{band}.tif"
+    path = RAW_DIR / f"{band}.tif"
+    if not path.exists():
+        raise FileNotFoundError(path)
 
-    if not band_path.exists():
-        raise FileNotFoundError(f"Missing {band} in {RAW_DIR}")
-
-    with rasterio.open(band_path) as src:
+    with rasterio.open(path) as src:
         arr = src.read(1).astype("float32")
 
         if arr.shape != ref_arr.shape:
@@ -67,34 +66,37 @@ for band in BANDS[1:]:
         else:
             arrays.append(arr)
 
-# ---------------------------------------
-# Extract bands
-# ---------------------------------------
 b2, b3, b4, b8, b11 = arrays
 
 # ---------------------------------------
-# Compute indices
+# Mask nodata
+# ---------------------------------------
+mask = (b2 == nodata) if nodata is not None else np.zeros_like(b2, dtype=bool)
+
+# ---------------------------------------
+# Indices
 # ---------------------------------------
 ndvi = (b8 - b4) / (b8 + b4 + 1e-6)
 ndbi = (b11 - b8) / (b11 + b8 + 1e-6)
 ndwi = (b3 - b8) / (b3 + b8 + 1e-6)
-mndwi = (b3 - b11) / (b3 + b11 + 1e-6)
-bsi = ((b11 + b4) - (b8 + b2)) / ((b11 + b4) + (b8 + b2) + 1e-6)
-ibi = (ndbi - (ndvi + mndwi)/2) / (ndbi + (ndvi + mndwi)/2 + 1e-6)
+bsi  = ((b11 + b4) - (b8 + b2)) / ((b11 + b4) + (b8 + b2) + 1e-6)
+ibi  = (ndbi - (ndvi + ndwi)/2) / (ndbi + (ndvi + ndwi)/2 + 1e-6)
 
 # ---------------------------------------
-# Final 10-band stack
+# Stack
 # ---------------------------------------
-stack = np.stack([
-    b2, b3, b4, b8, b11,
-    ndvi, ndbi, ndwi, bsi, ibi
-]).astype("float32")
+stack = np.stack([b2,b3,b4,b8,b11,ndvi,ndbi,ndwi,bsi,ibi]).astype("float32")
 
-ref_meta.update(count=10, dtype="float32")
+stack[:, mask] = 0
 
-out_path = OUT_DIR / f"stack_{YEAR}.tif"
+# ---------------------------------------
+# Save
+# ---------------------------------------
+ref_meta.update(count=10, dtype="float32", nodata=0)
+
+out_path = OUT_DIR / f"stack_{YEAR}_{AOI}.tif"
 
 with rasterio.open(out_path, "w", **ref_meta) as dst:
     dst.write(stack)
 
-print(f"\n✅ 10-band stack saved → {out_path}")
+print("✅ Stack saved:", out_path)

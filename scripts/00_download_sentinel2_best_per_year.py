@@ -4,99 +4,122 @@ import geopandas as gpd
 import pystac_client
 import planetary_computer
 import requests
+from collections import defaultdict
 
-# ----------------------------
+# -----------------------------------------
 # ARGUMENTS
-# ----------------------------
+# -----------------------------------------
 parser = argparse.ArgumentParser()
-parser.add_argument("--aoi", required=True, help="AOI shapefile name (without path)")
+parser.add_argument("--aoi", required=True)
 parser.add_argument("--year", type=int, required=True)
-parser.add_argument("--cloud", type=int, default=20)
+parser.add_argument("--cloud", type=int, default=40)
 args = parser.parse_args()
 
 AOI = f"data/raw/boundaries/{args.aoi}.shp"
 YEAR = args.year
 CLOUD = args.cloud
 
-OUT = Path("data/raw/sentinel2")
-BANDS = ["B02", "B03", "B04", "B08", "B11"]
-
+OUT = Path("data/raw/sentinel2") / args.aoi / str(YEAR)
 OUT.mkdir(parents=True, exist_ok=True)
 
-# ----------------------------
-# Download helper
-# ----------------------------
-def download(url, out_path):
-    with requests.get(url, stream=True, timeout=90) as r:
-        r.raise_for_status()
-        with open(out_path, "wb") as f:
-            for chunk in r.iter_content(1024 * 1024):
-                if chunk:
-                    f.write(chunk)
+BANDS = ["B02", "B03", "B04", "B08", "B11"]
 
-# ----------------------------
-# Load AOI
-# ----------------------------
+# -----------------------------------------
+# SAFE DOWNLOAD (resume + corruption check)
+# -----------------------------------------
+def download(url, out_path):
+
+    tmp = out_path.with_suffix(".tmp")
+
+    try:
+        with requests.get(url, stream=True, timeout=120) as r:
+            r.raise_for_status()
+            with open(tmp, "wb") as f:
+                for chunk in r.iter_content(1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+
+        if tmp.stat().st_size < 5_000_000:
+            tmp.unlink(missing_ok=True)
+            raise RuntimeError("Corrupted download")
+
+        tmp.rename(out_path)
+
+    except Exception as e:
+        print("❌ Download failed:", out_path.name)
+        tmp.unlink(missing_ok=True)
+
+
+# -----------------------------------------
+# LOAD AOI
+# -----------------------------------------
 print("Loading AOI...")
 aoi = gpd.read_file(AOI).to_crs("EPSG:4326")
 geom = aoi.geometry.iloc[0].__geo_interface__
 
-# ----------------------------
-# Open STAC
-# ----------------------------
+# -----------------------------------------
+# OPEN STAC
+# -----------------------------------------
 catalog = pystac_client.Client.open(
     "https://planetarycomputer.microsoft.com/api/stac/v1"
 )
 
-print(f"Searching Sentinel-2 for {YEAR}...")
+print(f"\n🔎 Searching Sentinel-2 {YEAR}")
 
 search = catalog.search(
     collections=["sentinel-2-l2a"],
     intersects=geom,
     datetime=f"{YEAR}-01-01/{YEAR}-12-31",
-    query={"eo:cloud_cover": {"lt": CLOUD}}
+    query={"eo:cloud_cover": {"lt": CLOUD}},
 )
 
 items = list(search.get_items())
 
 if not items:
-    raise RuntimeError("No Sentinel-2 scenes found.")
+    raise RuntimeError("No scenes found")
 
-# ----------------------------
-# Pick lowest cloud cover
-# ----------------------------
-best = sorted(
-    items,
-    key=lambda x: x.properties.get("eo:cloud_cover", 100)
-)[0]
+# -----------------------------------------
+# GROUP BY TILE
+# -----------------------------------------
+by_tile = defaultdict(list)
 
-best = planetary_computer.sign(best)
+for item in items:
+    tile = item.properties.get("s2:mgrs_tile")
+    if tile:
+        by_tile[tile].append(item)
 
-print("Best scene:")
-print("  ID:", best.id)
-print("  Cloud cover:", best.properties["eo:cloud_cover"], "%")
-print("  Date:", best.datetime)
+print("Tiles intersecting AOI:", list(by_tile.keys()))
 
-# ----------------------------
-# Create AOI → Year folder structure
-# ----------------------------
-out_dir = OUT / args.aoi / str(YEAR)
-out_dir.mkdir(parents=True, exist_ok=True)
-# ----------------------------
-# Download bands
-# ----------------------------
-for band in BANDS:
-    asset = best.assets.get(band)
-    if not asset:
-        continue
+# -----------------------------------------
+# DOWNLOAD BEST SCENE PER TILE
+# -----------------------------------------
+for tile, tile_items in by_tile.items():
 
-    out_file = out_dir / f"{band}.tif"
+    best = sorted(
+        tile_items,
+        key=lambda x: x.properties.get("eo:cloud_cover", 100)
+    )[0]
 
-    if out_file.exists():
-        print(f"{band} already exists. Skipping.")
-        continue
+    best = planetary_computer.sign(best)
 
-    print("Downloading:", band)
-    download(asset.href, out_file)
+    tile_dir = OUT / f"T{tile}"
+    tile_dir.mkdir(parents=True, exist_ok=True)
 
-print(f"\n✅ Lowest cloud scene downloaded for {YEAR}")
+    print(f"\n⬇ Tile {tile}")
+    print("   Cloud:", best.properties["eo:cloud_cover"])
+    print("   Date :", best.datetime)
+
+    for band in BANDS:
+        asset = best.assets.get(band)
+        if not asset:
+            continue
+
+        out_file = tile_dir / f"{band}.tif"
+
+        if out_file.exists():
+            continue
+
+        print("   Downloading:", band)
+        download(asset.href, out_file)
+
+print("\n✅ Sentinel-2 download complete")

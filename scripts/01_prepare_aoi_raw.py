@@ -17,6 +17,7 @@ AOI_PATH = f"data/raw/boundaries/{args.aoi}.shp"
 RAW_DIR = Path("data/raw/sentinel2") / args.aoi / args.year
 OUT_DIR = Path("data/raw/sentinel2_clipped") / args.aoi / args.year
 
+# Add SCL for future cloud masking (optional but recommended)
 BANDS = ["B02", "B03", "B04", "B08", "B11"]
 
 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -34,29 +35,35 @@ aoi = gpd.read_file(AOI_PATH)
 # ---------------------------------------
 for band in BANDS:
 
-    band_files = list(RAW_DIR.glob(f"**/*{band}.tif"))
+    band_files = sorted(RAW_DIR.glob(f"**/*{band}.tif"))
 
     if not band_files:
         print(f"❌ No files found for {band}")
         continue
 
     print(f"\nProcessing band: {band}")
+
     srcs = [rasterio.open(f) for f in band_files]
 
     # ---------------------------------------
     # Merge tiles
     # ---------------------------------------
-    mosaic, transform = merge(srcs)
+    mosaic, transform = merge(srcs, nodata=0)
 
     meta = srcs[0].meta.copy()
     meta.update(
         transform=transform,
         height=mosaic.shape[1],
-        width=mosaic.shape[2]
+        width=mosaic.shape[2],
+        nodata=0
     )
 
+    # Close raster handles (important)
+    for s in srcs:
+        s.close()
+
     # ---------------------------------------
-    # Reproject AOI to raster CRS
+    # Reproject AOI
     # ---------------------------------------
     aoi_proj = aoi.to_crs(meta["crs"])
     geoms = list(aoi_proj.geometry)
