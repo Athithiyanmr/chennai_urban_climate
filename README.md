@@ -22,6 +22,8 @@ imagery using spectral indices and UNet segmentation.
 
 ## Google Buildings (Colab)
 
+https://colab.research.google.com/github/google-research/google-research/blob/master/building_detection/open_buildings_download_region_polygons.ipynb#scrollTo=qP6ADuzRdZTF
+
     Use Earth Engine to export Google Open Buildings CSV.
 
 ## Deep Learning
