@@ -13,7 +13,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--year", required=True)
 parser.add_argument("--aoi", required=True)
 parser.add_argument("--csv", required=True)
-parser.add_argument("--conf", type=float, default=0.7)
+parser.add_argument("--conf", type=float, default=0.9)
 args = parser.parse_args()
 
 YEAR = args.year
