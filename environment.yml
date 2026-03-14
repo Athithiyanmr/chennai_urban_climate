@@ -36,3 +36,5 @@ dependencies:
   - pip:
       - planetary-computer
       - pystac-client
+      - geoai-py
+      
