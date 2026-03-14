@@ -1,10 +1,4 @@
-![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
-![TensorFlow](https://img.shields.io/badge/TensorFlow-FF6F00?style=flat-square&logo=tensorflow&logoColor=white)
-![Sentinel-2](https://img.shields.io/badge/Sentinel--2-003DA5?style=flat-square)
-![UNet](https://img.shields.io/badge/UNet-Deep%20Learning-c0392b?style=flat-square)
-![Planetary Computer](https://img.shields.io/badge/Planetary%20Computer-0078D4?style=flat-square&logo=microsoft&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-2e5c3e?style=flat-square)
-![IoU](https://img.shields.io/badge/Validation%20IoU-0.60%2B-4a7c59?style=flat-square)
+
 # 🏙️ Chennai Urban Climate
 
 > **A deep learning pipeline for built-up area extraction from Sentinel-2 imagery using UNet semantic segmentation — applied to Chennai for urban climate analysis.**
