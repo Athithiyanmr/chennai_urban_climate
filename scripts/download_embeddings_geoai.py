@@ -2,7 +2,6 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-
 import geopandas as gpd
 import geoai
 
