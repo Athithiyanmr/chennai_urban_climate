@@ -115,7 +115,7 @@ b2s, b3s, b4s, b8s, b11s = [scale(b) for b in [b2, b3, b4, b8, b11]]
 # ✅ NDWI and MNDWI both retained (your comment was correct)
 # -----------------------------------------
 eps = 1e-6
-
+# we can add more
 ndvi  = (b8s  - b4s)  / (b8s  + b4s  + eps)   # Vegetation
 ndbi  = (b11s - b8s)  / (b11s + b8s  + eps)   # Built-up
 ndwi  = (b3s  - b8s)  / (b3s  + b8s  + eps)   # Water (Gao 1996)
