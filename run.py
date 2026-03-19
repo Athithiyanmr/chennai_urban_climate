@@ -61,7 +61,7 @@ run('find . -name "._*" -type f -delete')
 if not args.skip_download:
     run(f"python scripts/00_download_sentinel2_best_per_year.py --year {YEAR} --aoi {AOI}")
 
-
+run('find . -name "._*" -type f -delete')
 # 2️⃣ AOI clip
 run(f"python scripts/01_prepare_aoi_raw.py --year {YEAR} --aoi {AOI}")
 
