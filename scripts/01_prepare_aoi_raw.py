@@ -33,7 +33,7 @@ AOI_PATH = f"data/raw/boundaries/{args.aoi}.shp"
 RAW_DIR = Path("data/raw/sentinel2") / args.aoi / args.year
 OUT_DIR = Path("data/processed/sentinel2_clipped") / args.aoi / args.year
 
-BANDS = ["B02", "B03", "B04", "B05", "B06", "B08", "B11", "B12", "SCL"]
+BANDS = ["B02", "B03", "B04", "B05", "B06", "B08", "B11", "B12"]
 TARGET_CRS = args.target_crs
 
 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -123,8 +123,7 @@ for band in BANDS:
         "transform": transform,
         "height": mosaic.shape[1],
         "width": mosaic.shape[2],
-        "nodata": 0,
-        "compress": "lzw"
+        "nodata": 0
     })
 
     # -----------------------------------------
@@ -144,10 +143,22 @@ for band in BANDS:
                 nodata=0
             )
 
+    # -----------------------------------------
+    # OPTIMIZATION (KEY PART 🚀)
+    # -----------------------------------------
+    clipped = clipped.astype("uint16")
+
     meta.update({
         "transform": clipped_transform,
         "height": clipped.shape[1],
-        "width": clipped.shape[2]
+        "width": clipped.shape[2],
+        "dtype": "uint16",
+        "compress": "lzw",
+        "tiled": True,
+        "blockxsize": 256,
+        "blockysize": 256,
+        "predictor": 2,
+        "BIGTIFF": "IF_SAFER"
     })
 
     # -----------------------------------------
@@ -158,7 +169,8 @@ for band in BANDS:
     with rasterio.open(out_path, "w", **meta) as dst:
         dst.write(clipped)
 
-    print(f"✔ Saved {band}")
+    size_mb = out_path.stat().st_size / 1_000_000
+    print(f"✔ Saved {band} ({size_mb:.1f} MB)")
 
 # -----------------------------------------
 # DONE
