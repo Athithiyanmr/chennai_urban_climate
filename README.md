@@ -19,6 +19,8 @@ This project builds a **reproducible deep learning pipeline** that extracts buil
 
 It goes beyond traditional ML classifiers by applying convolutional neural networks to learn spatial patterns directly from satellite image patches, achieving pixel-level segmentation at 10m resolution.
 
+future study:
+
 ---
 
 ## 🎯 Scientific Objective
