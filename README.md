@@ -1,4 +1,3 @@
-
 # 🏙️ Chennai Urban Climate
 
 > **A deep learning pipeline for built-up area extraction from Sentinel-2 imagery using UNet semantic segmentation — applied to Chennai for urban climate analysis.**
@@ -19,7 +18,25 @@ This project builds a **reproducible deep learning pipeline** that extracts buil
 
 It goes beyond traditional ML classifiers by applying convolutional neural networks to learn spatial patterns directly from satellite image patches, achieving pixel-level segmentation at 10m resolution.
 
-future study:
+---
+
+## 🏙️ Key Results
+
+> **Applied to Chennai metropolitan area — one of India’s fastest-growing cities and a critical urban heat island case study.**
+
+| Metric | Value |
+|---|---|
+| **Area of interest** | Chennai metropolitan area, Tamil Nadu |
+| **Image resolution** | 10m (Sentinel-2 Level-2A) |
+| **Model input** | 10-channel spectral stack (B02, B03, B04, B08, B11 + 5 indices) |
+| **Training labels** | OSM building footprints + Google Open Buildings |
+| **Validation metric** | IoU (Intersection over Union) |
+| **Observed validation IoU** | ≥ 0.60 at 10m Sentinel-2 resolution |
+| **Loss function** | BCE + Dice Loss |
+
+**Why it matters:** Built-up area maps derived from this pipeline directly feed into urban heat island (UHI) modelling and climate vulnerability assessments — enabling evidence-based planning for a city of 10+ million people.
+
+**Related pipeline:** For a traditional ML baseline (Random Forest + spectral indices) on the same task, see [sentinel2_builtup_pipeline →](https://github.com/Athithiyanmr/sentinel2_builtup_pipeline)
 
 ---
 
@@ -51,7 +68,7 @@ To learn pixel-level representations of built-up surfaces from multi-spectral Se
 
 ---
 
-## 🛰️ Input Data
+## 🛣️ Input Data
 
 **Sentinel-2 Level-2A bands:**
 
@@ -191,6 +208,7 @@ python -m scripts.dl.predict_unet
 - [ ] Temporal change detection (built-up expansion over years)
 - [ ] DeepLabV3+ comparison study
 - [ ] Web map visualization of predictions
+- [ ] Integration with LST (Land Surface Temperature) data for UHI analysis
 
 ---
 
