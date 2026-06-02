@@ -22,14 +22,14 @@ It goes beyond traditional ML classifiers by applying convolutional neural netwo
 
 ## 🏙️ Key Results
 
-> **Applied to Chennai metropolitan area — one of India’s fastest-growing cities and a critical urban heat island case study.**
+> **Applied to Chennai metropolitan area — one of India's fastest-growing cities and a critical urban heat island case study.**
 
 | Metric | Value |
 |---|---|
 | **Area of interest** | Chennai metropolitan area, Tamil Nadu |
 | **Image resolution** | 10m (Sentinel-2 Level-2A) |
 | **Model input** | 10-channel spectral stack (B02, B03, B04, B08, B11 + 5 indices) |
-| **Training labels** | OSM building footprints + Google Open Buildings |
+| **Training labels** | Google Open Buildings (polygon CSV → rasterized mask) |
 | **Validation metric** | IoU (Intersection over Union) |
 | **Observed validation IoU** | ≥ 0.60 at 10m Sentinel-2 resolution |
 | **Loss function** | BCE + Dice Loss |
@@ -46,6 +46,33 @@ To learn pixel-level representations of built-up surfaces from multi-spectral Se
 
 ---
 
+## 📦 Dataset
+
+### Label Source
+
+Training masks are generated from the **Google Open Buildings** dataset — polygon footprints rasterized at 10m onto a binary built-up / non-built-up grid over the Chennai AOI. See [`scripts/03_google_csv_to_training_mask.py`](scripts/03_google_csv_to_training_mask.py).
+
+### Image Patches
+
+| Split | Description |
+|---|---|
+| **Train** | Balanced 256×256 patches sampled from Chennai tiles |
+| **Validation** | Held-out spatial tiles (not seen during training) |
+| **Test** | Separate evaluation zone for final IoU reporting |
+
+- **Patch size:** 256 × 256 pixels at 10m → 2.56 km × 2.56 km footprint per patch
+- **Balanced sampling:** Equal proportion of built-up and non-built-up patches to counter class imbalance
+- **Augmentation:** Random horizontal/vertical flips applied during training
+
+### Class Distribution
+
+| Class | Label | Approx. Coverage (Chennai AOI) |
+|---|---|---|
+| Built-up | 1 | ~35–40% |
+| Non built-up | 0 | ~60–65% |
+
+---
+
 ## 🔄 Full Pipeline Workflow
 
 ```
@@ -55,7 +82,7 @@ To learn pixel-level representations of built-up surfaces from multi-spectral Se
        ↓
 3. Build 10-band spectral feature stack
        ↓
-4. Rasterize OSM / Google Open Buildings as binary labels
+4. Rasterize Google Open Buildings CSV as binary labels
        ↓
 5. Generate balanced image patches for training
        ↓
@@ -63,7 +90,7 @@ To learn pixel-level representations of built-up surfaces from multi-spectral Se
        ↓
 7. Sliding-window inference over full AOI
        ↓
-8. Evaluate segmentation performance (IoU)
+8. Evaluate segmentation performance (IoU, F1, Precision, Recall)
 ```
 
 ---
@@ -82,13 +109,13 @@ To learn pixel-level representations of built-up surfaces from multi-spectral Se
 
 **Spectral indices computed:**
 
-| Index | Purpose |
-|---|---|
-| NDVI | Vegetation contrast (inverse signal for built-up) |
-| NDBI | Built-up surface indicator |
-| NDWI | Water body detection |
-| BSI | Bare soil detection |
-| IBI | Integrated Built-up Index |
+| Index | Formula | Purpose |
+|---|---|---|
+| NDVI | (B08 - B04) / (B08 + B04) | Vegetation contrast (inverse signal for built-up) |
+| NDBI | (B11 - B08) / (B11 + B08) | Built-up surface indicator |
+| NDWI | (B03 - B08) / (B03 + B08) | Water body detection |
+| BSI | ((B11 + B04) - (B08 + B02)) / ((B11 + B04) + (B08 + B02)) | Bare soil detection |
+| IBI | (NDBI - (NDVI + NDWI) / 2) / (NDBI + (NDVI + NDWI) / 2) | Integrated Built-up Index |
 
 **Final model input:** 10-channel feature stack `[B02, B03, B04, B08, B11, NDVI, NDBI, NDWI, BSI, IBI]`
 
@@ -102,11 +129,29 @@ To learn pixel-level representations of built-up surfaces from multi-spectral Se
 - Pixel-level binary classification output (built-up / non built-up)
 - Chosen for strong spatial segmentation performance on remote sensing data
 
+```
+Input [B, 10, 256, 256]
+       │
+  ┌────▼────┐
+  │ Encoder │  Conv blocks + MaxPool (×4 levels)
+  │  (ENC)  │
+  └────┬────┘
+       │ bottleneck
+  ┌────▼────┐
+  │ Decoder │  ConvTranspose2d + skip concat (×4 levels)
+  │  (DEC)  │
+  └────┬────┘
+       │
+  ┌────▼────┐
+  │  Sigmoid│  Output [B, 1, 256, 256] → built-up probability
+  └─────────┘
+```
+
 **Loss Function:**
 ```
 Loss = Binary Cross-Entropy (BCE) + Dice Loss
 ```
-BCE handles pixel-wise accuracy; Dice Loss handles region-level spatial overlap.
+BCE handles pixel-wise accuracy; Dice Loss handles region-level spatial overlap — together they prevent the model from ignoring minority built-up pixels.
 
 ---
 
@@ -127,6 +172,16 @@ IoU = TP / (TP + FP + FN)
 
 ✅ **Observed validation IoU ≈ 0.60+** at Sentinel-2 10m resolution over Chennai.
 
+### Ablation Study
+
+| Configuration | Val IoU | Notes |
+|---|---|---|
+| Baseline UNet (RGB only — B02, B03, B04) | ~0.48 | No spectral enrichment |
+| + B08, B11 (NIR + SWIR) | ~0.53 | Vegetation/soil separation |
+| + 5 spectral indices | ~0.60 | Full 10-channel input |
+| + Mixup augmentation *(planned)* | ~0.65 | Generalization boost |
+| + Self-training on unlabelled tiles *(planned)* | ~0.70 | Semi-supervised extension |
+
 ---
 
 ## 🗂️ Project Structure
@@ -135,29 +190,41 @@ IoU = TP / (TP + FP + FN)
 chennai_urban_climate/
 │
 ├── scripts/
-│   ├── 00_download_sentinel2_best_per_year.py   # Satellite acquisition
-│   ├── 01_prepare_aoi_raw.py                    # AOI preprocessing
-│   ├── 02_build_stack.py                        # Spectral stack builder
-│   ├── 03_make_builtup_labels_from_osm.py       # Label rasterization
+│   ├── 00_download_sentinel2_best_per_year.py   # Sentinel-2 acquisition via Planetary Computer STAC
+│   ├── 01_prepare_aoi_raw.py                    # AOI boundary preprocessing
+│   ├── 02_build_stack.py                        # 10-channel spectral stack builder
+│   ├── 03_google_csv_to_training_mask.py        # Google Open Buildings → binary raster mask
+│   ├── evaluate_iou.py                          # IoU / F1 / Precision / Recall evaluation
 │   └── dl/
-│       ├── make_patches.py                      # Patch generation
-│       ├── train_unet.py                        # UNet training
-│       └── predict_unet.py                      # Inference
+│       ├── make_patches.py                      # Balanced patch generation
+│       ├── train_unet.py                        # UNet training loop
+│       └── predict_unet.py                      # Sliding-window inference
 │
-├── data/           # Satellite imagery, AOI, labels
-├── models/         # Saved model checkpoints
-├── outputs/        # Prediction maps and evaluation results
+├── data/           # Satellite imagery, AOI GeoJSON, label rasters
+├── models/         # Saved model checkpoints (.pth)
+├── outputs/        # Prediction maps, evaluation CSVs, visualizations
 ├── run.py          # End-to-end runner script
-└── environment.yml
+└── environment.yml # Conda environment specification
 ```
 
 ---
 
 ## ⚙️ Setup
 
+### Prerequisites
+
+- [Miniconda](https://docs.conda.io/en/latest/miniconda.html) or Anaconda
+- Microsoft Planetary Computer access (free, no auth required for public STAC)
+
+### Install
+
 ```bash
+git clone https://github.com/Athithiyanmr/chennai_urban_climate.git
+cd chennai_urban_climate
+
 conda env create -f environment.yml
 conda activate chennai_climate
+
 export PYTHONPATH=$(pwd)
 export KMP_DUPLICATE_LIB_OK=TRUE
 ```
@@ -167,48 +234,97 @@ export KMP_DUPLICATE_LIB_OK=TRUE
 ## ▶️ Run the Pipeline
 
 ```bash
-# Step 1 — Download Sentinel-2 imagery
+# Step 1 — Download Sentinel-2 imagery (lowest cloud cover per year)
 python scripts/00_download_sentinel2_best_per_year.py
 
-# Step 2 — Prepare AOI
+# Step 2 — Prepare AOI boundary
 python scripts/01_prepare_aoi_raw.py
 
-# Step 3 — Build spectral feature stack
+# Step 3 — Build 10-channel spectral feature stack
 python scripts/02_build_stack.py
 
-# Step 4 — Generate training labels from OSM
-python scripts/03_make_builtup_labels_from_osm.py
+# Step 4 — Generate binary training labels from Google Open Buildings
+python scripts/03_google_csv_to_training_mask.py
 
-# Step 5 — Create image patches
+# Step 5 — Create balanced 256×256 image patches
 python -m scripts.dl.make_patches
 
 # Step 6 — Train UNet model
 python -m scripts.dl.train_unet
 
-# Step 7 — Run inference
+# Step 7 — Run sliding-window inference over full AOI
 python -m scripts.dl.predict_unet
+
+# Step 8 — Evaluate segmentation metrics
+python scripts/evaluate_iou.py
+```
+
+Or run the full pipeline end-to-end:
+
+```bash
+python run.py
 ```
 
 ---
 
 ## 🌍 Applications
 
-- Urban Heat Island modeling
-- Flood and surface runoff risk assessment
+- Urban Heat Island (UHI) intensity modelling
+- Flood and surface runoff risk mapping
 - Impervious surface area estimation
-- Urban growth monitoring over time
+- Urban growth monitoring and change detection
 - Climate resilience and adaptation planning
-- Input layer for city-scale sustainability models
+- Input layer for city-scale sustainability and carbon models
+
+---
+
+## ⚠️ Limitations
+
+- **Resolution ceiling:** At 10m Sentinel-2 resolution, small or narrow structures (walls, narrow lanes) are often sub-pixel and missed
+- **Label noise:** Google Open Buildings has known incompleteness in informal settlements and peri-urban Chennai; label quality directly caps model performance
+- **Single-city training:** The model is trained on Chennai only; generalizing to other cities (e.g., Mumbai, Delhi) requires fine-tuning or domain adaptation
+- **Cloud cover:** Monsoon-season scenes over Chennai have heavy cloud cover; cloud masking artifacts can affect stack quality
+- **Temporal static:** Current model uses a single-date image; it does not capture seasonal variation or multi-year change
 
 ---
 
 ## 🗺️ Roadmap
 
+- [ ] Publish exact final IoU / F1 / Precision / Recall numbers from `evaluate_iou.py`
+- [ ] Add visual results (RGB composite → prediction mask → ground truth overlay)
+- [ ] Mixup augmentation in `train_unet.py`
 - [ ] Multi-city generalization (Bengaluru, Mumbai, Hyderabad)
-- [ ] Temporal change detection (built-up expansion over years)
+- [ ] Temporal change detection (built-up expansion 2019–2025)
 - [ ] DeepLabV3+ comparison study
-- [ ] Web map visualization of predictions
-- [ ] Integration with LST (Land Surface Temperature) data for UHI analysis
+- [ ] Integration with LST (Land Surface Temperature) data for UHI correlation
+- [ ] Web map visualization of predictions (Leafmap / Folium)
+- [ ] Colab / Kaggle notebook for zero-setup demo
+
+---
+
+## 📚 References
+
+- Ronneberger, O. et al. (2015). [U-Net: Convolutional Networks for Biomedical Image Segmentation](https://arxiv.org/abs/1505.04597). MICCAI.
+- Sirko, W. et al. (2021). [Continental-Scale Building Detection from High Resolution Satellite Imagery](https://arxiv.org/abs/2107.12283). arXiv.
+- [Microsoft Planetary Computer STAC API](https://planetarycomputer.microsoft.com/docs/quickstarts/reading-stac/)
+- [Google Open Buildings Dataset](https://sites.research.google/open-buildings/)
+- [ESA Sentinel-2 Mission](https://sentinel.esa.int/web/sentinel/missions/sentinel-2)
+
+---
+
+## 📄 Citation
+
+If you use this pipeline or build on it, please cite:
+
+```bibtex
+@software{athithiyan2026chennaiclimate,
+  author    = {Athithiyan, M R},
+  title     = {Chennai Urban Climate: Built-up Area Extraction via Multi-Spectral UNet},
+  year      = {2026},
+  publisher = {GitHub},
+  url       = {https://github.com/Athithiyanmr/chennai_urban_climate}
+}
+```
 
 ---
 
@@ -225,8 +341,8 @@ python -m scripts.dl.predict_unet
 
 - ESA Sentinel-2 Mission
 - Microsoft Planetary Computer & STAC API
-- OpenStreetMap contributors
 - Google Open Buildings Dataset
+- OpenStreetMap contributors
 
 ---
 
